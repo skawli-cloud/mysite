@@ -1,8 +1,7 @@
-from flask import Flask, request, jsonify
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext
 from supabase import create_client, Client
 import os
-from telegram import Update, Bot
-from telegram.ext import Dispatcher, CommandHandler, CallbackContext
 
 # ----------------------
 # تنظیمات
@@ -10,80 +9,53 @@ from telegram.ext import Dispatcher, CommandHandler, CallbackContext
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # https://your-app.onrender.com/telegram
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-bot = Bot(token=BOT_TOKEN)
-app = Flask(__name__)
 
 # ----------------------
-# Dispatcher برای مدیریت دستورات
+# مراحل Conversation
 # ----------------------
-dispatcher = Dispatcher(bot, None, workers=0)
+TITLE, CONTENT, ASK_IMAGE, IMAGE = range(4)
 
-# --- دستورات ربات ---
 def start(update: Update, context: CallbackContext):
     update.message.reply_text("سلام! با /add میتونی پست بسازی.")
 
-def add(update: Update, context: CallbackContext):
-    try:
-        text = " ".join(context.args)
-        title, content = text.split("|")
+# شروع افزودن پست
+def add_start(update: Update, context: CallbackContext):
+    update.message.reply_text("لطفاً عنوان پست رو وارد کن:")
+    return TITLE
+
+# دریافت عنوان
+def add_title(update: Update, context: CallbackContext):
+    context.user_data['title'] = update.message.text
+    update.message.reply_text("حالا متن پست رو وارد کن:")
+    return CONTENT
+
+# دریافت متن
+def add_content(update: Update, context: CallbackContext):
+    context.user_data['content'] = update.message.text
+    reply_keyboard = [['بله', 'نه']]
+    update.message.reply_text(
+        "میخوای عکس اضافه کنی؟",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    )
+    return ASK_IMAGE
+
+# پاسخ به اضافه کردن عکس
+def ask_image(update: Update, context: CallbackContext):
+    answer = update.message.text
+    if answer == 'بله':
+        update.message.reply_text("لطفاً عکس رو بفرست:", reply_markup=ReplyKeyboardRemove())
+        return IMAGE
+    else:
+        # ذخیره بدون عکس
         supabase.table("posts").insert({
-            "title": title.strip(),
-            "content": content.strip()
+            "title": context.user_data['title'],
+            "content": context.user_data['content'],
+            "image_url": None
         }).execute()
-        update.message.reply_text("✅ پست اضافه شد.")
-    except:
-        update.message.reply_text("❌ فرمت درست نیست:\n/add عنوان | متن پست")
+        update.message.reply_text("✅ پست اضافه شد.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
 
-def delete(update: Update, context: CallbackContext):
-    try:
-        post_id = int(context.args[0])
-        supabase.table("posts").delete().eq("id", post_id).execute()
-        update.message.reply_text("🗑 پست حذف شد.")
-    except:
-        update.message.reply_text("❌ فرمت درست نیست:\n/delete 1")
-
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("add", add))
-dispatcher.add_handler(CommandHandler("delete", delete))
-
-# ----------------------
-# Webhook endpoint
-# ----------------------
-@app.route("/telegram", methods=["POST"])
-def telegram_webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "ok"
-
-# ----------------------
-# API ساده برای سایت
-# ----------------------
-@app.route("/posts", methods=["GET"])
-def get_posts():
-    data = supabase.table("posts").select("*").execute()
-    return jsonify(data.data)
-
-@app.route("/posts", methods=["POST"])
-def add_post():
-    req = request.json
-    data = supabase.table("posts").insert({
-        "title": req["title"],
-        "content": req["content"],
-        "image_url": req.get("image_url", None)
-    }).execute()
-    return jsonify(data.data)
-
-@app.route("/posts/<int:post_id>", methods=["DELETE"])
-def delete_post(post_id):
-    data = supabase.table("posts").delete().eq("id", post_id).execute()
-    return jsonify(data.data)
-
-# ----------------------
-# اجرای اصلی
-# ----------------------
-if __name__ == "__main__":
-    bot.set_webhook(WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=5000)
+# دریافت عکس
+def add_image(update: Update, context: CallbackContext):
