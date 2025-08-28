@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # اضافه شد
 from supabase import create_client, Client
 import os
 from telegram import Update, Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove
@@ -15,6 +16,7 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # https://your-app.onrender.com/tel
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
+CORS(app)  # فعال کردن CORS برای همه منابع
 
 # ----------------------
 # مراحل Conversation
@@ -48,7 +50,6 @@ def ask_image(update: Update, context: CallbackContext):
         update.message.reply_text("لطفاً عکس رو بفرست:", reply_markup=ReplyKeyboardRemove())
         return IMAGE
     else:
-        # ذخیره بدون عکس
         supabase.table("posts").insert({
             "title": context.user_data['title'],
             "content": context.user_data['content'],
@@ -59,7 +60,7 @@ def ask_image(update: Update, context: CallbackContext):
 
 def add_image(update: Update, context: CallbackContext):
     photo_file = update.message.photo[-1].get_file()
-    image_url = photo_file.file_path  # برای ذخیره آنلاین بهتره روی Supabase Storage آپلود کنی
+    image_url = photo_file.file_path  # بهتره بعداً روی Supabase Storage آپلود بشه
     supabase.table("posts").insert({
         "title": context.user_data['title'],
         "content": context.user_data['content'],
