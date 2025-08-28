@@ -1,7 +1,8 @@
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext
+from flask import Flask, request, jsonify
 from supabase import create_client, Client
 import os
+from telegram import Update, Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext
 
 # ----------------------
 # تنظیمات
@@ -9,8 +10,11 @@ import os
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # https://your-app.onrender.com/telegram
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+bot = Bot(token=BOT_TOKEN)
+app = Flask(__name__)
 
 # ----------------------
 # مراحل Conversation
@@ -45,17 +49,3 @@ def add_content(update: Update, context: CallbackContext):
 def ask_image(update: Update, context: CallbackContext):
     answer = update.message.text
     if answer == 'بله':
-        update.message.reply_text("لطفاً عکس رو بفرست:", reply_markup=ReplyKeyboardRemove())
-        return IMAGE
-    else:
-        # ذخیره بدون عکس
-        supabase.table("posts").insert({
-            "title": context.user_data['title'],
-            "content": context.user_data['content'],
-            "image_url": None
-        }).execute()
-        update.message.reply_text("✅ پست اضافه شد.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
-
-# دریافت عکس
-def add_image(update: Update, context: CallbackContext):
